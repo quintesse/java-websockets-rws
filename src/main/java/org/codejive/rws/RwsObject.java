@@ -113,61 +113,16 @@ public class RwsObject {
             if (args != null) {
                 convertedArgs = new Object[args.length];
                 for (int i = 0; i < args.length; i++) {
-                    Class argClass = args[i].getClass();
                     Class paramClass = method.getParameterTypes()[i];
-                    if (argClass != paramClass) {
-                        // Types are not the same, let's see if conversion is possible
-                        // TODO Implement conversion stuff
-                        convertedArgs[i] = convertFromJSON(args[i], paramClass);
-                    } else {
-                        convertedArgs[i] = args[i];
-                    }
+                    convertedArgs[i] = RwsRegistry.convertFromJSON(args[i], paramClass);
                 }
             }
             Object tmpResult = method.invoke(obj, convertedArgs);
-            result = convertToJSON(tmpResult);
+            result = RwsRegistry.convertToJSON(tmpResult);
         } catch (IllegalAccessException ex) {
             throw new RwsException("Could not call method '" + methodName + "' on object '" + name + "'", ex);
         } catch (IllegalArgumentException ex) {
             throw new RwsException("Could not call method '" + methodName + "' on object '" + name + "'", ex);
-        }
-        return result;
-    }
-
-    private Object convertToJSON(Object value) {
-        Object result = null;
-        if (value != null) {
-            if (value instanceof JSONAware) {
-                result = value;
-            } else if (value instanceof Iterable) {
-                JSONArray arr = new JSONArray();
-                Iterable iter = (Iterable) value;
-                for (Object val : iter) {
-                    arr.add(convertToJSON(val));
-                }
-                result = arr;
-            } else if (value.getClass().isArray()) {
-                JSONArray arr = new JSONArray();
-                Object[] values = (Object[]) value;
-                for (Object val : values) {
-                    arr.add(convertToJSON(val));
-                }
-                result = arr;
-            } else {
-                result = value.toString();
-            }
-        }
-        return result;
-    }
-
-    private Object convertFromJSON(Object value, Class targetType) {
-        Object result = null;
-        if (value != null) {
-            if (targetType.isAssignableFrom(value.getClass())) {
-                result = value;
-            } else {
-                result = value.toString();
-            }
         }
         return result;
     }

@@ -54,4 +54,16 @@ public class RwsSession {
         String jsonText = JSONValue.toJSONString(data);
         adapter.sendMessage(jsonText);
     }
+
+    public boolean isConnected() {
+        return adapter.isConnected();
+    }
+
+    public void disconnect() {
+        try {
+            adapter.disconnect();
+        } catch (Throwable th) {
+            // Ignore
+        }
+    }
 }
