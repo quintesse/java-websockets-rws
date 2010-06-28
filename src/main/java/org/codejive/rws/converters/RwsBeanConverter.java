@@ -5,6 +5,7 @@ import java.beans.BeanInfo;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
+import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.Collection;
@@ -76,18 +77,20 @@ public class RwsBeanConverter implements RwsConverter<Object> {
             BeanInfo info = Introspector.getBeanInfo(targetType);
             result = targetType.newInstance();
             for (PropertyDescriptor prop : info.getPropertyDescriptors()) {
-                boolean contains =  names.contains(prop.getName());
-                if ((include && contains) || (!include && !contains)) {
-                    try {
-                        Object propVal = val.get(prop.getName());
-                        Object convPropVal = RwsRegistry.convertFromJSON(propVal, prop.getPropertyType());
-                        prop.getWriteMethod().invoke(result, convPropVal);
-                    } catch (IllegalAccessException ex) {
-                        throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
-                    } catch (IllegalArgumentException ex) {
-                        throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
-                    } catch (InvocationTargetException ex) {
-                        throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
+                if (prop.getWriteMethod() != null) {
+                    boolean contains =  names.contains(prop.getName());
+                    if ((include && contains) || (!include && !contains)) {
+                        try {
+                            Object propVal = val.get(prop.getName());
+                            Object convPropVal = RwsRegistry.convertFromJSON(propVal, prop.getPropertyType());
+                            prop.getWriteMethod().invoke(result, convPropVal);
+                        } catch (IllegalAccessException ex) {
+                            throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
+                        } catch (IllegalArgumentException ex) {
+                            throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
+                        } catch (InvocationTargetException ex) {
+                            throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
+                        }
                     }
                 }
             }
@@ -102,8 +105,26 @@ public class RwsBeanConverter implements RwsConverter<Object> {
     }
 
     @Override
-    public void generateTypeScript(Class<Object> type, StringBuilder output) {
-        throw new UnsupportedOperationException("Not supported yet.");
+    public void generateTypeScript(Class<Object> type, PrintWriter out) throws RwsException {
+        out.println("if (typeof " + type.getSimpleName() + " != 'function') {");
+        out.println("    function " + type.getSimpleName() + "() {");
+        try {
+            BeanInfo info = Introspector.getBeanInfo(type);
+            for (PropertyDescriptor prop : info.getPropertyDescriptors()) {
+                if (prop.getWriteMethod() != null) {
+                    out.print("        this." + prop.getName() + " = ");
+                    if (Number.class.isAssignableFrom(type)) {
+                        out.println("0;");
+                    } else {
+                        out.println("null;");
+                    }
+                }
+            }
+        } catch (IntrospectionException ex) {
+            throw new RwsException("Could not generate type script", ex);
+        }
+        out.println("    }");
+        out.println("}");
     }
 
 }

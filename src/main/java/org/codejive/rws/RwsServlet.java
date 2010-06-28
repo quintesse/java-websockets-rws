@@ -3,6 +3,8 @@ package org.codejive.rws;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -106,18 +108,41 @@ public class RwsServlet extends HttpServlet {
             out.println("if (!rws) var rws = {};");
             out.println("if (!" + rwsObject.getName() + ") var " + rwsObject.getName() + " = {};");
 
+            Set<Class> paramTypes = new HashSet<Class>();
             Set<String> methodNames = rwsObject.getMethodNames();
             for (String methodName : methodNames) {
-                String params = generateParameters(rwsObject, methodName);
-                if (params.length() > 0) {
-                    out.println(rwsObject.getName() + "." + methodName + " = function(" + params + ", onsuccess, onfailure) {");
-                    out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure, " + params + ")");
+                Method m = rwsObject.getTargetMethod(methodName);
+                Class[] types = m.getParameterTypes();
+                if (methodName.startsWith("subscribe") && types.length == 1 && types[0] == RwsHandler.class) {
+                    // Event subscribe
+                    String eventName = methodName.substring(9).toLowerCase();
+                    out.println(rwsObject.getName() + "." + methodName + " = function(handler) {");
+                    out.println("    return rws.subscribe('sys', '" + eventName + "', '" + rwsObject.getName() + "', handler)");
+                    out.println("}");
+                } else if (methodName.startsWith("unsubscribe") && types.length == 1 && types[0] == RwsHandler.class) {
+                    // Event unsubscribe
+                    String eventName = methodName.substring(11).toLowerCase();
+                    out.println(rwsObject.getName() + "." + methodName + " = function(handler) {");
+                    out.println("    return rws.unsubscribe('sys', '" + eventName + "', '" + rwsObject.getName() + "', handler)");
                     out.println("}");
                 } else {
-                    out.println(rwsObject.getName() + "." + methodName + " = function(onsuccess, onfailure) {");
-                    out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure)");
-                    out.println("}");
+                    // Normal method
+                    paramTypes.addAll(Arrays.asList(types));
+                    String params = generateParameters(types);
+                    if (params.length() > 0) {
+                        out.println(rwsObject.getName() + "." + methodName + " = function(" + params + ", onsuccess, onfailure) {");
+                        out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure, " + params + ")");
+                        out.println("}");
+                    } else {
+                        out.println(rwsObject.getName() + "." + methodName + " = function(onsuccess, onfailure) {");
+                        out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure)");
+                        out.println("}");
+                    }
                 }
+            }
+
+            for (Class paramType : paramTypes) {
+                RwsRegistry.generateTypeScript(paramType, out);
             }
         } catch (RwsException ex) {
             throw new ServletException("Could not generate object script for " + rwsObject.getName(), ex);
@@ -126,10 +151,9 @@ public class RwsServlet extends HttpServlet {
         }
     }
 
-    private String generateParameters(RwsObject rwsObject, String methodName) throws RwsException {
+    private String generateParameters(Class[] types) throws RwsException {
         StringBuilder result = new StringBuilder();
-        Method m = rwsObject.getTargetMethod(methodName);
-        for (int i = 0; i < m.getParameterTypes().length; i++) {
+        for (int i = 0; i < types.length; i++) {
             if (i > 0) {
                 result.append(", ");
             }

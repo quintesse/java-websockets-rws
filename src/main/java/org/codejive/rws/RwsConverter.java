@@ -1,6 +1,8 @@
 
 package org.codejive.rws;
 
+import java.io.PrintWriter;
+
 /**
  *
  * @author tako
@@ -11,5 +13,5 @@ public interface RwsConverter<T> {
 
     T fromJSON(Object value, Class<T> targetType) throws RwsException;
 
-    void generateTypeScript(Class<T> type, StringBuilder output);
+    void generateTypeScript(Class<T> type, PrintWriter out) throws RwsException;
 }

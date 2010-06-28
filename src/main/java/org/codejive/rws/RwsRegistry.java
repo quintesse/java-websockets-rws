@@ -1,6 +1,7 @@
 
 package org.codejive.rws;
 
+import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -119,6 +120,13 @@ public class RwsRegistry {
             }
         }
         return result;
+    }
+
+    public static void generateTypeScript(Class type, PrintWriter out) throws RwsException {
+        RwsConverter conv = RwsRegistry.findConverter(type);
+        if (conv != null) {
+            conv.generateTypeScript(type, out);
+        }
     }
 
     private static RwsConverter findConverter(Class type) {
