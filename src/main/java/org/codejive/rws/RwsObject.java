@@ -9,8 +9,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONAware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
