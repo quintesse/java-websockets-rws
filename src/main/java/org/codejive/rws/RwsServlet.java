@@ -27,9 +27,7 @@ public class RwsServlet extends HttpServlet {
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
 
-        RwsObject clt = new RwsObject("__this__", RwsSession.class, Scope.connection, new String[] {
-            "getId", "getName", "setName"
-        });
+        RwsObject clt = new RwsObject("__this__", RwsSession.class, Scope.connection);
         RwsRegistry.register(clt);
     }
     
@@ -109,7 +107,7 @@ public class RwsServlet extends HttpServlet {
             out.println("if (!" + rwsObject.getName() + ") var " + rwsObject.getName() + " = {};");
 
             Set<Class> paramTypes = new HashSet<Class>();
-            Set<String> methodNames = rwsObject.getMethodNames();
+            Set<String> methodNames = rwsObject.listMethodNames();
             for (String methodName : methodNames) {
                 Method m = rwsObject.getTargetMethod(methodName);
                 Class[] types = m.getParameterTypes();

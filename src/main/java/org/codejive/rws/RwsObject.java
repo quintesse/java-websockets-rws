@@ -20,9 +20,11 @@ public class RwsObject {
     private final String name;
     private final Class targetClass;
     private final Scope scope;
-    private final Set<String> allowedMethods = new HashSet<String>();
+    private final Set<String> methodNames = new HashSet<String>();
+    private final boolean include;
 
     private Object targetObject;
+    private Set<String> allowedMethods;
     
     public enum Scope { call, connection, global };
 
@@ -36,19 +38,45 @@ public class RwsObject {
         return targetClass;
     }
 
-    public Set<String> getMethodNames() {
-        return Collections.unmodifiableSet(allowedMethods);
+    public RwsObject(String name, Class targetClass, Scope scope) {
+        this(name, targetClass, scope, (Collection<String>)null, false);
     }
 
-    public RwsObject(String name, Class targetClass, Scope scope, Collection<String> allowedMethods) {
+    public RwsObject(String name, Class targetClass, Scope scope, Collection<String> methodNames, boolean include) {
         this.name = name;
         this.targetClass = targetClass;
         this.scope = scope;
-        this.allowedMethods.addAll(allowedMethods);
+        if (methodNames != null) {
+            this.methodNames.addAll(methodNames);
+        }
+        this.include = include;
+
+        if (!include) {
+            this.methodNames.add("getClass");
+            this.methodNames.add("hashCode");
+            this.methodNames.add("equals");
+            this.methodNames.add("notify");
+            this.methodNames.add("notifyAll");
+            this.methodNames.add("wait");
+        }
     }
 
-    public RwsObject(String name, Class targetClass, Scope scope, String[] allowedMethods) {
-        this(name, targetClass, scope, Arrays.asList(allowedMethods));
+    public RwsObject(String name, Class targetClass, Scope scope, String[] methodNames, boolean include) {
+        this(name, targetClass, scope, Arrays.asList(methodNames), include);
+    }
+
+    public synchronized Set<String> listMethodNames() {
+        if (allowedMethods == null) {
+            allowedMethods = new HashSet<String>();
+            Method[] allMethods = targetClass.getMethods();
+            for (Method m : allMethods) {
+                boolean contains =  methodNames.contains(m.getName());
+                if ((include && contains) || (!include && !contains)) {
+                    allowedMethods.add(m.getName());
+                }
+            }
+        }
+        return Collections.unmodifiableSet(allowedMethods);
     }
 
     public Method getTargetMethod(String methodName) throws RwsException {
