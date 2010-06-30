@@ -1,5 +1,8 @@
 package org.codejive.rws;
 
+import java.beans.EventSetDescriptor;
+import java.beans.MethodDescriptor;
+import java.beans.ParameterDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
@@ -12,6 +15,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.codejive.rws.RwsObject.Scope;
+import org.codejive.rws.utils.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,8 +31,12 @@ public class RwsServlet extends HttpServlet {
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
 
-        RwsObject clt = new RwsObject("__this__", RwsSession.class, Scope.connection);
-        RwsRegistry.register(clt);
+        try {
+            RwsObject clt = new RwsObject("__this__", RwsSession.class, Scope.connection);
+            RwsRegistry.register(clt);
+        } catch (RwsException ex) {
+            throw new ServletException("Could not initialize RwsRegistry", ex);
+        }
     }
     
     /** 
@@ -107,35 +115,35 @@ public class RwsServlet extends HttpServlet {
             out.println("if (!" + rwsObject.getName() + ") var " + rwsObject.getName() + " = {};");
 
             Set<Class> paramTypes = new HashSet<Class>();
-            Set<String> methodNames = rwsObject.listMethodNames();
-            for (String methodName : methodNames) {
-                Method m = rwsObject.getTargetMethod(methodName);
-                Class[] types = m.getParameterTypes();
-                if (methodName.startsWith("subscribe") && types.length == 1 && types[0] == RwsHandler.class) {
-                    // Event subscribe
-                    String eventName = methodName.substring(9).toLowerCase();
-                    out.println(rwsObject.getName() + "." + methodName + " = function(handler) {");
-                    out.println("    return rws.subscribe('sys', '" + eventName + "', '" + rwsObject.getName() + "', handler)");
-                    out.println("}");
-                } else if (methodName.startsWith("unsubscribe") && types.length == 1 && types[0] == RwsHandler.class) {
-                    // Event unsubscribe
-                    String eventName = methodName.substring(11).toLowerCase();
-                    out.println(rwsObject.getName() + "." + methodName + " = function(handler) {");
-                    out.println("    return rws.unsubscribe('sys', '" + eventName + "', '" + rwsObject.getName() + "', handler)");
+            for (String methodName : rwsObject.listMethodNames()) {
+                MethodDescriptor m = rwsObject.getTargetMethod(methodName);
+                paramTypes.addAll(Arrays.asList(m.getMethod().getParameterTypes()));
+                String params = generateParameters(m.getMethod().getParameterTypes());
+                if (params.length() > 0) {
+                    out.println(rwsObject.getName() + "." + methodName + " = function(" + params + ", onsuccess, onfailure) {");
+                    out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure, " + params + ")");
                     out.println("}");
                 } else {
-                    // Normal method
-                    paramTypes.addAll(Arrays.asList(types));
-                    String params = generateParameters(types);
-                    if (params.length() > 0) {
-                        out.println(rwsObject.getName() + "." + methodName + " = function(" + params + ", onsuccess, onfailure) {");
-                        out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure, " + params + ")");
-                        out.println("}");
-                    } else {
-                        out.println(rwsObject.getName() + "." + methodName + " = function(onsuccess, onfailure) {");
-                        out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure)");
-                        out.println("}");
-                    }
+                    out.println(rwsObject.getName() + "." + methodName + " = function(onsuccess, onfailure) {");
+                    out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure)");
+                    out.println("}");
+                }
+            }
+            
+            for (String eventName : rwsObject.listEventNames()) {
+                EventSetDescriptor es = rwsObject.getTargetEvent(eventName);
+                String evnm = Strings.upperFirst(eventName);
+                MethodDescriptor[] listenerMethods = es.getListenerMethodDescriptors();
+                for (MethodDescriptor m : listenerMethods) {
+                    String mnm = Strings.upperFirst(m.getName());
+                    // Event subscribe
+                    out.println(rwsObject.getName() + ".subscribe" + evnm + mnm + " = function(handler) {");
+                    out.println("    return rws.subscribe('sys', '" + m.getName() + "', '" + eventName + "', '" + rwsObject.getName() + "', handler)");
+                    out.println("}");
+                    // Event unsubscribe
+                    out.println(rwsObject.getName() + ".unsubscribe" + evnm + mnm + " = function(handlerid) {");
+                    out.println("    rws.unsubscribe(handlerid)");
+                    out.println("}");
                 }
             }
 

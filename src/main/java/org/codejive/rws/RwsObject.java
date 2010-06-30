@@ -1,13 +1,19 @@
 
 package org.codejive.rws;
 
+import java.beans.BeanInfo;
+import java.beans.EventSetDescriptor;
+import java.beans.IntrospectionException;
+import java.beans.Introspector;
+import java.beans.MethodDescriptor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +26,13 @@ public class RwsObject {
     private final String name;
     private final Class targetClass;
     private final Scope scope;
-    private final Set<String> methodNames = new HashSet<String>();
+    private final Set<String> methodNames;
     private final boolean include;
 
+    private Map<String, MethodDescriptor> allowedMethods;
+    private Map<String, EventSetDescriptor> allowedEvents;
+    
     private Object targetObject;
-    private Set<String> allowedMethods;
     
     public enum Scope { call, connection, global };
 
@@ -38,61 +46,81 @@ public class RwsObject {
         return targetClass;
     }
 
-    public RwsObject(String name, Class targetClass, Scope scope) {
+    public RwsObject(String name, Class targetClass, Scope scope) throws RwsException {
         this(name, targetClass, scope, (Collection<String>)null, false);
     }
 
-    public RwsObject(String name, Class targetClass, Scope scope, Collection<String> methodNames, boolean include) {
+    public RwsObject(String name, Class targetClass, Scope scope, Collection<String> methodNames, boolean include) throws RwsException {
         this.name = name;
         this.targetClass = targetClass;
         this.scope = scope;
+        this.methodNames = new HashSet<String>();
         if (methodNames != null) {
             this.methodNames.addAll(methodNames);
         }
         this.include = include;
 
-        if (!include) {
-            this.methodNames.add("getClass");
-            this.methodNames.add("hashCode");
-            this.methodNames.add("equals");
-            this.methodNames.add("notify");
-            this.methodNames.add("notifyAll");
-            this.methodNames.add("wait");
+        try {
+            BeanInfo info = Introspector.getBeanInfo(targetClass);
+            
+            allowedMethods = new HashMap<String, MethodDescriptor>();
+            MethodDescriptor[] methodDefs = info.getMethodDescriptors();
+            for (MethodDescriptor md : methodDefs) {
+                boolean contains = this.methodNames.contains(md.getName());
+                if ((this.include && contains) || (!this.include && !contains)) {
+                    if (!allowedMethods.containsKey(md.getName())) {
+                        allowedMethods.put(md.getName(), md);
+                    } else {
+                        // If a method with the same name was already added once
+                        // before we're dealing with an overloaded method which
+                        // is not supported, so we flag it for later removal
+                        allowedMethods.put(md.getName(), null);
+                    }
+                }
+            }
+            // Remove overloaded methods
+            Set<String> mnms = new HashSet<String>(allowedMethods.keySet());
+            for (String mnm : mnms) {
+                if (allowedMethods.get(mnm) == null) {
+                    allowedMethods.remove(mnm);
+                }
+            }
+            // Remove forbidden methods
+            allowedMethods.remove("getClass");
+            allowedMethods.remove("hashCode");
+            allowedMethods.remove("equals");
+            allowedMethods.remove("notify");
+            allowedMethods.remove("notifyAll");
+            allowedMethods.remove("wait");
+
+            allowedEvents = new HashMap<String, EventSetDescriptor>();
+            EventSetDescriptor[] eventSets = info.getEventSetDescriptors();
+            for (EventSetDescriptor es : eventSets) {
+                allowedEvents.put(es.getName(), es);
+            }
+        } catch (IntrospectionException ex) {
+            throw new RwsException("Could not get necessary information about target object", ex);
         }
     }
 
-    public RwsObject(String name, Class targetClass, Scope scope, String[] methodNames, boolean include) {
+    public RwsObject(String name, Class targetClass, Scope scope, String[] methodNames, boolean include) throws RwsException {
         this(name, targetClass, scope, Arrays.asList(methodNames), include);
     }
 
-    public synchronized Set<String> listMethodNames() {
-        if (allowedMethods == null) {
-            allowedMethods = new HashSet<String>();
-            Method[] allMethods = targetClass.getMethods();
-            for (Method m : allMethods) {
-                boolean contains =  methodNames.contains(m.getName());
-                if ((include && contains) || (!include && !contains)) {
-                    allowedMethods.add(m.getName());
-                }
-            }
-        }
-        return Collections.unmodifiableSet(allowedMethods);
+    public Set<String> listMethodNames() {
+        return Collections.unmodifiableSet(allowedMethods.keySet());
     }
 
-    public Method getTargetMethod(String methodName) throws RwsException {
-        Method[] allMethods = targetClass.getMethods();
-        ArrayList<Method> methods = new ArrayList<Method>();
-        for (Method m : allMethods) {
-            if (m.getName().equals(methodName)) {
-                methods.add(m);
-            }
-        }
-        if (methods.size() > 1) {
-            throw new RwsException("Overloaded method '" + methodName + "' for object '" + name + "', which is not supported");
-        } else if (methods.isEmpty()) {
-            throw new RwsException("Couldn't find matching method '" + methodName + "' for object '" + name + "'");
-        }
-        return methods.get(0);
+    public MethodDescriptor getTargetMethod(String methodName) {
+        return allowedMethods.get(methodName);
+    }
+
+    public Set<String> listEventNames() {
+        return Collections.unmodifiableSet(allowedEvents.keySet());
+    }
+
+    public EventSetDescriptor getTargetEvent(String methodName) {
+        return allowedEvents.get(methodName);
     }
 
     public Object getTargetObject(RwsSession context) throws RwsException {
@@ -134,17 +162,21 @@ public class RwsObject {
         Object result = null;
         try {
             Object obj = getTargetObject(context);
-            Method method = getTargetMethod(methodName);
-            Object[] convertedArgs = null;
-            if (args != null) {
-                convertedArgs = new Object[args.length];
-                for (int i = 0; i < args.length; i++) {
-                    Class paramClass = method.getParameterTypes()[i];
-                    convertedArgs[i] = RwsRegistry.convertFromJSON(args[i], paramClass);
+            MethodDescriptor method = getTargetMethod(methodName);
+            if (method != null) {
+                Object[] convertedArgs = null;
+                if (args != null) {
+                    convertedArgs = new Object[args.length];
+                    for (int i = 0; i < args.length; i++) {
+                        Class paramClass = method.getMethod().getParameterTypes()[i];
+                        convertedArgs[i] = RwsRegistry.convertFromJSON(args[i], paramClass);
+                    }
                 }
+                Object tmpResult = method.getMethod().invoke(obj, convertedArgs);
+                result = RwsRegistry.convertToJSON(tmpResult);
+            } else {
+                throw new RwsException("Method '" + methodName + "' does not exist for object '" + name + "'");
             }
-            Object tmpResult = method.invoke(obj, convertedArgs);
-            result = RwsRegistry.convertToJSON(tmpResult);
         } catch (IllegalAccessException ex) {
             throw new RwsException("Could not call method '" + methodName + "' on object '" + name + "'", ex);
         } catch (IllegalArgumentException ex) {
