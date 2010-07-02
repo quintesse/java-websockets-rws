@@ -2,19 +2,15 @@ package org.codejive.rws;
 
 import java.beans.EventSetDescriptor;
 import java.beans.MethodDescriptor;
-import java.beans.ParameterDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import org.codejive.rws.RwsObject.Scope;
 import org.codejive.rws.utils.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,18 +23,6 @@ public class RwsServlet extends HttpServlet {
 
     private static final Logger log = LoggerFactory.getLogger(RwsServlet.class);
 
-    @Override
-    public void init(ServletConfig config) throws ServletException {
-        super.init(config);
-
-        try {
-            RwsObject clt = new RwsObject("__this__", RwsSession.class, Scope.connection);
-            RwsRegistry.register(clt);
-        } catch (RwsException ex) {
-            throw new ServletException("Could not initialize RwsRegistry", ex);
-        }
-    }
-    
     /** 
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
      * @param request servlet request

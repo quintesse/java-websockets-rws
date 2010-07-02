@@ -6,6 +6,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EventListener;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,14 +48,30 @@ public class RwsRegistry {
         return rwsObjects.get(objName);
     }
     
-    public static Object call(RwsSession context, String objName, String method, Object[] args) throws RwsException, InvocationTargetException {
-        log.debug("Calling method {} on object {}", method, objName);
-        RwsObject obj = rwsObjects.get(objName);
-        if (obj != null) {
-            return obj.call(context, method, args);
-        } else {
+    private static RwsObject getObjectStrict(String objName) throws RwsException {
+        RwsObject result = rwsObjects.get(objName);
+        if (result == null) {
             throw new RwsException("Unknown object '" + objName + "'");
         }
+        return result;
+    }
+
+    public static Object call(RwsSession context, String objName, String method, Object[] args) throws RwsException, InvocationTargetException {
+        log.debug("Calling method {} on object {}", method, objName);
+        RwsObject obj = getObjectStrict(objName);
+        return obj.call(context, method, args);
+    }
+
+    public static EventListener subscribe(RwsSession context, String objName, String event, String action, RwsEventHandler handler) throws RwsException, InvocationTargetException {
+        if (log.isDebugEnabled()) log.debug("Subscribing to action {} on event {} on object {}", new Object[] { action, event, objName });
+        RwsObject obj = getObjectStrict(objName);
+        return obj.subscribe(context, event, action, handler);
+    }
+
+    public static void unsubscribe(RwsSession context, String objName, String event, EventListener listener) throws RwsException, InvocationTargetException {
+        log.debug("Unsubscribing from from event {} on object {}", event, objName);
+        RwsObject obj = getObjectStrict(objName);
+        obj.unsubscribe(context, event, listener);
     }
 
     public static class ConverterInfo {

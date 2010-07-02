@@ -6,11 +6,14 @@ import java.beans.EventSetDescriptor;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.MethodDescriptor;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EventListener;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -183,5 +186,70 @@ public class RwsObject {
             throw new RwsException("Could not call method '" + methodName + "' on object '" + name + "'", ex);
         }
         return result;
+    }
+
+    public EventListener subscribe(RwsSession context, String eventName, final String action, final RwsEventHandler handler) throws RwsException, InvocationTargetException {
+        EventListener listener;
+        try {
+            Object obj = getTargetObject(context);
+            EventSetDescriptor event = getTargetEvent(eventName);
+            if (event != null) {
+                Class listenerType = event.getListenerType();
+
+                // Check if the action that was passed matches one of the methods of the listener interface
+                Method[] ms = event.getListenerMethods();
+                boolean found = false;
+                for (int i = 0; i < ms.length && !found; i++) {
+                    found = ms[i].getName().equals(action);
+                }
+                if (!found) {
+                    throw new RwsException("Action " + action + " does not exist for event '" + eventName + "' on object '" + name + "'");
+                }
+
+                // Create the event listener proxy that will call the event handler
+                Class[] interfaces = new Class[] { listenerType };
+                InvocationHandler handlerWrapper = new InvocationHandler() {
+                    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                        if (method.getName().equals(action)) {
+                            handler.handleEvent(RwsRegistry.convertToJSON(args));
+                            return null;
+                        } else if (method.getDeclaringClass() == Object.class) {
+                            return method.invoke(handler, args);
+                        } else {
+                            return null;
+                        }
+                    }
+                };
+                listener = (EventListener) Proxy.newProxyInstance(listenerType.getClassLoader(), interfaces, handlerWrapper);
+
+                // Add the newly created proxy event listener to the object
+                Method addListener = event.getAddListenerMethod();
+                addListener.invoke(obj, new Object[] { listener });
+            } else {
+                throw new RwsException("Event '" + eventName + "' does not exist for object '" + name + "'");
+            }
+        } catch (IllegalAccessException ex) {
+            throw new RwsException("Could not subscribe to event '" + eventName + "' on object '" + name + "'", ex);
+        } catch (IllegalArgumentException ex) {
+            throw new RwsException("Could not subscribe to event '" + eventName + "' on object '" + name + "'", ex);
+        }
+        return listener;
+    }
+
+    public void unsubscribe(RwsSession context, String eventName, EventListener listener) throws RwsException, InvocationTargetException {
+        try {
+            Object obj = getTargetObject(context);
+            EventSetDescriptor event = getTargetEvent(eventName);
+            if (event != null) {
+                Method removeListener = event.getRemoveListenerMethod();
+                removeListener.invoke(obj, new Object[] { listener });
+            } else {
+                throw new RwsException("Event '" + eventName + "' does not exist for object '" + name + "'");
+            }
+        } catch (IllegalAccessException ex) {
+            throw new RwsException("Could not unsubscribe from event '" + eventName + "' on object '" + name + "'", ex);
+        } catch (IllegalArgumentException ex) {
+            throw new RwsException("Could not unsubscribe from event '" + eventName + "' on object '" + name + "'", ex);
+        }
     }
 }
