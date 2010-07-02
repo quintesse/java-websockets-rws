@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  */
 public class RwsRegistry {
     private static final Map<String, RwsObject> rwsObjects = new HashMap<String, RwsObject>();
-    private static final List<ConverterInfo> rwsConverters = new ArrayList<ConverterInfo>();
+    private static final List<Conversion> rwsConverters = new ArrayList<Conversion>();
 
     private static final Logger log = LoggerFactory.getLogger(RwsRegistry.class);
 
@@ -74,23 +74,41 @@ public class RwsRegistry {
         obj.unsubscribe(context, event, listener);
     }
 
-    public static class ConverterInfo {
+    public static class Conversion {
+        private String name;
         private RwsConverter converter;
         private String match;
 
-        public ConverterInfo(RwsConverter converter, String match) {
+        public Conversion(String name, RwsConverter converter, String match) {
+            this.name = name;
             this.converter = converter;
             this.match = match;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public RwsConverter getConverter() {
+            return converter;
+        }
+
+        public String getMatch() {
+            return match;
         }
     }
 
     public static void register(RwsConverter conv, String match) {
+        register(null, conv, match);
+    }
+
+    public static void register(String name, RwsConverter conv, String match) {
         log.info("Registering converter {}", conv);
-        ConverterInfo convInfo = new ConverterInfo(conv, match);
+        Conversion convInfo = new Conversion(name, conv, match);
         rwsConverters.add(convInfo);
     }
 
-    public static void unregister(ConverterInfo convInfo) {
+    public static void unregister(Conversion convInfo) {
         log.info("Un-registering converter {}", convInfo);
         rwsConverters.remove(convInfo);
     }
@@ -98,9 +116,13 @@ public class RwsRegistry {
     public static Object convertToJSON(Object value) throws RwsException {
         Object result = null;
         if (value != null) {
-            RwsConverter conv = RwsRegistry.findConverter(value.getClass());
+            Conversion conv = RwsRegistry.findConversion(value.getClass());
             if (conv != null) {
-                result = conv.toJSON(value);
+                String name = conv.getName();
+                if (name == null) {
+                    name = value.getClass().getSimpleName();
+                }
+                result = conv.getConverter().toJSON(value, name);
             } else if (value instanceof JSONAware) {
                 result = value;
             } else if (value instanceof Iterable) {
@@ -127,9 +149,9 @@ public class RwsRegistry {
     public static Object convertFromJSON(Object value, Class targetType) throws RwsException {
         Object result = null;
         if (value != null) {
-            RwsConverter conv = RwsRegistry.findConverter(targetType);
+            Conversion conv = RwsRegistry.findConversion(targetType);
             if (conv != null) {
-                result = conv.fromJSON(value, targetType);
+                result = conv.getConverter().fromJSON(value, targetType);
             } else if (targetType.isAssignableFrom(value.getClass())) {
                 result = value;
             } else {
@@ -140,15 +162,19 @@ public class RwsRegistry {
     }
 
     public static void generateTypeScript(Class type, PrintWriter out) throws RwsException {
-        RwsConverter conv = RwsRegistry.findConverter(type);
+        Conversion conv = RwsRegistry.findConversion(type);
         if (conv != null) {
-            conv.generateTypeScript(type, out);
+            String name = conv.getName();
+            if (name == null) {
+                name = type.getSimpleName();
+            }
+            conv.getConverter().generateTypeScript(name, type, out);
         }
     }
 
-    private static RwsConverter findConverter(Class type) {
-        RwsConverter result = null;
-        for (ConverterInfo convInfo : rwsConverters) {
+    public static Conversion findConversion(Class type) {
+        Conversion result = null;
+        for (Conversion convInfo : rwsConverters) {
             boolean matches;
             if (convInfo.match.startsWith("*") && convInfo.match.endsWith("*")) {
                 String match = convInfo.match.substring(1, convInfo.match.length() - 1);
@@ -163,7 +189,7 @@ public class RwsRegistry {
                 matches = type.getName().equals(convInfo.match);
             }
             if (matches) {
-                result = convInfo.converter;
+                result = convInfo;
                 break;
             }
         }

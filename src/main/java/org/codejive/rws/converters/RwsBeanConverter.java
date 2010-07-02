@@ -7,6 +7,7 @@ import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -14,6 +15,7 @@ import java.util.Set;
 import org.codejive.rws.RwsConverter;
 import org.codejive.rws.RwsException;
 import org.codejive.rws.RwsRegistry;
+import org.codejive.rws.RwsRegistry.Conversion;
 import org.json.simple.JSONObject;
 
 /**
@@ -43,7 +45,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
     }
 
     @Override
-    public Object toJSON(Object value) throws RwsException {
+    public Object toJSON(Object value, String name) throws RwsException {
         JSONObject result = new JSONObject();
         try {
             BeanInfo info = Introspector.getBeanInfo(value.getClass());
@@ -63,6 +65,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
                     }
                 }
             }
+            result.put("class", name);
         } catch (IntrospectionException ex) {
             throw new RwsException("Could not convert value", ex);
         }
@@ -105,13 +108,32 @@ public class RwsBeanConverter implements RwsConverter<Object> {
     }
 
     @Override
-    public void generateTypeScript(Class<Object> type, PrintWriter out) throws RwsException {
-        out.println("if (typeof " + type.getSimpleName() + " != 'function') {");
-        out.println("    function " + type.getSimpleName() + "() {");
+    public void generateTypeScript(String name, Class<Object> type, PrintWriter out) throws RwsException {
+        out.println("if (typeof " + name + " != 'function') {");
+        out.println("    function " + name + "() {");
         try {
             BeanInfo info = Introspector.getBeanInfo(type);
-            for (PropertyDescriptor prop : info.getPropertyDescriptors()) {
-                if (prop.getWriteMethod() != null) {
+            PropertyDescriptor[] props = info.getPropertyDescriptors();
+            generateTypeProperties(props, type, out, true);
+        } catch (IntrospectionException ex) {
+            throw new RwsException("Could not generate type script", ex);
+        }
+        out.println("    }");
+        generateInheritance(name, type, out, true);
+        out.println("}");
+    }
+
+    private void generateTypeProperties(PropertyDescriptor[] props, Class type, PrintWriter out, boolean first) {
+        if (type.getSuperclass() != null) {
+            Conversion conv = RwsRegistry.findConversion(type.getSuperclass());
+            if (conv == null) {
+                generateTypeProperties(props, type.getSuperclass(), out, false);
+            }
+        }
+        for (PropertyDescriptor prop : props) {
+            if (!prop.getName().equals("class")) {
+                Method m = prop.getReadMethod();
+                if (m != null && m.getDeclaringClass() == type) {
                     out.print("        this." + prop.getName() + " = ");
                     if (Number.class.isAssignableFrom(type)) {
                         out.println("0;");
@@ -120,11 +142,23 @@ public class RwsBeanConverter implements RwsConverter<Object> {
                     }
                 }
             }
-        } catch (IntrospectionException ex) {
-            throw new RwsException("Could not generate type script", ex);
         }
-        out.println("    }");
-        out.println("}");
+    }
+
+    private void generateInheritance(String name, Class type, PrintWriter out, boolean first) {
+        if (type.getSuperclass() != null) {
+            Conversion conv = RwsRegistry.findConversion(type.getSuperclass());
+            if (conv == null) {
+                generateInheritance(name, type.getSuperclass(), out, false);
+            } else {
+                String superName = conv.getName();
+                if (superName == null) {
+                    superName = type.getSuperclass().getSimpleName();
+                }
+                out.println("    " + name + ".prototype = new " + superName + "();");
+                out.println("    " + name + ".prototype.constructor = " + name + ";");
+            }
+        }
     }
 
 }

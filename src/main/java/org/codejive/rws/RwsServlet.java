@@ -4,9 +4,8 @@ import java.beans.EventSetDescriptor;
 import java.beans.MethodDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -98,10 +97,10 @@ public class RwsServlet extends HttpServlet {
             out.println("if (!rws) var rws = {};");
             out.println("if (!" + rwsObject.getName() + ") var " + rwsObject.getName() + " = {};");
 
-            Set<Class> paramTypes = new HashSet<Class>();
+            List<Class> paramTypes = new ArrayList<Class>();
             for (String methodName : rwsObject.listMethodNames()) {
                 MethodDescriptor m = rwsObject.getTargetMethod(methodName);
-                paramTypes.addAll(Arrays.asList(m.getMethod().getParameterTypes()));
+                addParamTypes(paramTypes, m.getMethod().getParameterTypes());
                 String params = generateParameters(m.getMethod().getParameterTypes());
                 if (params.length() > 0) {
                     out.println(rwsObject.getName() + "." + methodName + " = function(" + params + ", onsuccess, onfailure) {");
@@ -120,6 +119,7 @@ public class RwsServlet extends HttpServlet {
                 MethodDescriptor[] listenerMethods = es.getListenerMethodDescriptors();
                 for (MethodDescriptor m : listenerMethods) {
                     String mnm = Strings.upperFirst(m.getName());
+                    addParamTypes(paramTypes, m.getMethod().getParameterTypes());
                     // Event subscribe
                     out.println(rwsObject.getName() + ".subscribe" + evnm + mnm + " = function(handler) {");
                     out.println("    return rws.subscribe('sys', '" + m.getName() + "', '" + eventName + "', '" + rwsObject.getName() + "', handler)");
@@ -151,6 +151,17 @@ public class RwsServlet extends HttpServlet {
             result.append(i);
         }
         return result.toString();
+    }
+
+    private void addParamTypes(List<Class> paramTypes, Class... types) {
+        for (Class t : types) {
+            if (!paramTypes.contains(t)) {
+                if (t.getSuperclass() != null) {
+                    addParamTypes(paramTypes, t.getSuperclass());
+                }
+                paramTypes.add(t);
+            }
+        }
     }
 
     private void generateOverview(HttpServletResponse response) throws IOException {
