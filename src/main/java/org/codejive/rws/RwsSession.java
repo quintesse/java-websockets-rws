@@ -17,12 +17,14 @@ import org.slf4j.LoggerFactory;
  * @author tako
  */
 public class RwsSession {
+    private final RwsContext context;
     private RwsWebSocketAdapter adapter;
-    private String id;
+    private final String id;
+    private String name;
 
-    private HashMap<String, Object> attributes;
-    private HashMap<String, Subscription> subscriptions;
-    private HashMap<String, EventListener> listeners;
+    private final HashMap<String, Object> attributes;
+    private final HashMap<String, Subscription> subscriptions;
+    private final HashMap<String, EventListener> listeners;
 
     private static long nextSessionId = 1;
 
@@ -32,9 +34,24 @@ public class RwsSession {
         return id;
     }
 
-    public RwsSession(RwsWebSocketAdapter adapter) {
+    public RwsContext getContext() {
+        return context;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+        fireChange(this);
+    }
+
+    public RwsSession(RwsContext context, RwsWebSocketAdapter adapter) {
+        this.context = context;
         this.adapter = adapter;
         id = Long.toString(nextSessionId++);
+        name = "Client #" + id;
         attributes = new HashMap<String, Object>();
         subscriptions = new HashMap<String, Subscription>();
         listeners = new HashMap<String, EventListener>();
@@ -85,12 +102,17 @@ public class RwsSession {
         }
     }
 
+    public void fireChange(RwsSession client) {
+        context.fireChange(this);
+    }
+
     public void subscribe(final Subscription sub) throws RwsException, InvocationTargetException {
         if (listeners.containsKey(sub.getHandlerId())) {
             throw new RwsException("An event handler with the id '" + sub.getHandlerId() + "' already exists");
         }
 
         RwsEventHandler handler = new RwsEventHandler() {
+            @Override
             public void handleEvent(Object data) throws IOException {
                 send("sys", newEvent(sub.getHandlerId(), data));
             }

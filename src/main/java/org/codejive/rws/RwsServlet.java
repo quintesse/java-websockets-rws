@@ -1,16 +1,11 @@
 package org.codejive.rws;
 
-import java.beans.EventSetDescriptor;
-import java.beans.MethodDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.List;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import org.codejive.rws.utils.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +39,7 @@ public class RwsServlet extends HttpServlet {
             log.debug("Requesting object script for '{}'", objName);
             RwsObject rwsObject = RwsRegistry.getObject(objName);
             if (rwsObject != null) {
-                generateObjectScript(response, rwsObject);
+                generateTypeScript(response, rwsObject.getTargetClass());
             } else {
                 response.sendError(HttpServletResponse.SC_NOT_FOUND, "Unknown RWS object '" + objName + "'");
             }
@@ -87,80 +82,19 @@ public class RwsServlet extends HttpServlet {
         return "RWS object script generator";
     }// </editor-fold>
 
-    private void generateObjectScript(HttpServletResponse response, RwsObject rwsObject) throws IOException, ServletException {
+    private void generateTypeScript(HttpServletResponse response, Class type) throws IOException, ServletException {
         assert(response != null);
-        assert(rwsObject != null);
+        assert(type != null);
 
         response.setContentType("text/javascript; charset=UTF-8");
         PrintWriter out = response.getWriter();
         try {
             out.println("if (!rws) var rws = {};");
-            out.println("if (!" + rwsObject.getName() + ") var " + rwsObject.getName() + " = {};");
-
-            List<Class> paramTypes = new ArrayList<Class>();
-            for (String methodName : rwsObject.listMethodNames()) {
-                MethodDescriptor m = rwsObject.getTargetMethod(methodName);
-                addParamTypes(paramTypes, m.getMethod().getParameterTypes());
-                String params = generateParameters(m.getMethod().getParameterTypes());
-                if (params.length() > 0) {
-                    out.println(rwsObject.getName() + "." + methodName + " = function(" + params + ", onsuccess, onfailure) {");
-                    out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure, " + params + ")");
-                    out.println("}");
-                } else {
-                    out.println(rwsObject.getName() + "." + methodName + " = function(onsuccess, onfailure) {");
-                    out.println("    rws.call('sys', '" + methodName + "', '" + rwsObject.getName() + "', onsuccess, onfailure)");
-                    out.println("}");
-                }
-            }
-            
-            for (String eventName : rwsObject.listEventNames()) {
-                EventSetDescriptor es = rwsObject.getTargetEvent(eventName);
-                String evnm = Strings.upperFirst(eventName);
-                MethodDescriptor[] listenerMethods = es.getListenerMethodDescriptors();
-                for (MethodDescriptor m : listenerMethods) {
-                    String mnm = Strings.upperFirst(m.getName());
-                    addParamTypes(paramTypes, m.getMethod().getParameterTypes());
-                    // Event subscribe
-                    out.println(rwsObject.getName() + ".subscribe" + evnm + mnm + " = function(handler) {");
-                    out.println("    return rws.subscribe('sys', '" + m.getName() + "', '" + eventName + "', '" + rwsObject.getName() + "', handler)");
-                    out.println("}");
-                    // Event unsubscribe
-                    out.println(rwsObject.getName() + ".unsubscribe" + evnm + mnm + " = function(handlerid) {");
-                    out.println("    rws.unsubscribe(handlerid)");
-                    out.println("}");
-                }
-            }
-
-            for (Class paramType : paramTypes) {
-                RwsRegistry.generateTypeScript(paramType, out);
-            }
+            RwsRegistry.generateTypeScript(type, out);
         } catch (RwsException ex) {
-            throw new ServletException("Could not generate object script for " + rwsObject.getName(), ex);
+            throw new ServletException("Could not generate object script for " + type.getSimpleName(), ex);
         } finally {
             out.close();
-        }
-    }
-
-    private String generateParameters(Class[] types) throws RwsException {
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < types.length; i++) {
-            if (i > 0) {
-                result.append(", ");
-            }
-            result.append("p");
-            result.append(i);
-        }
-        return result.toString();
-    }
-
-    private void addParamTypes(List<Class> paramTypes, Class... types) {
-        for (Class t : types) {
-            if (!paramTypes.contains(t)) {
-                if (t.getSuperclass() != null) {
-                    addParamTypes(paramTypes, t.getSuperclass());
-                }
-                paramTypes.add(t);
-            }
         }
     }
 

@@ -9,9 +9,9 @@ import java.io.PrintWriter;
  */
 public interface RwsConverter<T> {
     
-    Object toJSON(T value, String name) throws RwsException;
+    Object toJSON(RwsObject obj, T value) throws RwsException;
 
-    T fromJSON(Object value, Class<T> targetType) throws RwsException;
+    T fromJSON(RwsObject obj, Object value) throws RwsException;
 
-    void generateTypeScript(String name, Class<T> type, PrintWriter out) throws RwsException;
+    void generateTypeScript(RwsObject obj, String instanceName, PrintWriter out) throws RwsException;
 }
