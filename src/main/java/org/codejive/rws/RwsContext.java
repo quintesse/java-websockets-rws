@@ -19,11 +19,16 @@ import org.slf4j.LoggerFactory;
  * @author tako
  */
 public class RwsContext {
+    private final RwsRegistry registry = new RwsRegistry();
     private final Map<String, RwsSession> sessions = new ConcurrentHashMap<String, RwsSession>();
     private final Set<SessionListener> listeners = new CopyOnWriteArraySet<SessionListener>();
     private final Map<String, Object> attributes = new ConcurrentHashMap<String, Object>();
 
     private final Logger log = LoggerFactory.getLogger(RwsContext.class);
+
+    public RwsRegistry getRegistry() {
+        return registry;
+    }
 
     public Object getAttribute(String name) {
         return attributes.get(name);

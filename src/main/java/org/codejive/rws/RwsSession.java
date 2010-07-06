@@ -118,7 +118,7 @@ public class RwsSession {
             }
         };
 
-        EventListener listener = RwsRegistry.subscribe(this, sub.getObject(), sub.getEvent(), sub.getAction(), handler);
+        EventListener listener = context.getRegistry().subscribe(this, sub.getObject(), sub.getEvent(), sub.getAction(), handler);
         
         subscriptions.put(sub.getHandlerId(), sub);
         listeners.put(sub.getHandlerId(), listener);
@@ -127,7 +127,7 @@ public class RwsSession {
     public void unsubscribe(Subscription sub) throws RwsException, InvocationTargetException {
         EventListener listener = listeners.get(sub.getHandlerId());
         if (listener != null) {
-            RwsRegistry.unsubscribe(this, sub.getObject(), sub.getEvent(), listener);
+            context.getRegistry().unsubscribe(this, sub.getObject(), sub.getEvent(), listener);
             subscriptions.remove(sub.getHandlerId());
             listeners.remove(sub.getHandlerId());
         }

@@ -42,7 +42,7 @@ public class RwsObject {
     private Map<String, EventSetDescriptor> allowedEvents;
     private Map<String, PropertyDescriptor> allowedProps;
     
-    private static final Logger log = LoggerFactory.getLogger(RwsRegistry.class);
+    private static final Logger log = LoggerFactory.getLogger(RwsObject.class);
 
     public String getMatch() {
         return match;
@@ -98,6 +98,7 @@ public class RwsObject {
             allowedMethods.remove("equals");
             allowedMethods.remove("notify");
             allowedMethods.remove("notifyAll");
+            allowedMethods.remove("toString");
             allowedMethods.remove("wait");
 
             allowedEvents = new HashMap<String, EventSetDescriptor>();
@@ -160,11 +161,11 @@ public class RwsObject {
                     convertedArgs = new Object[args.length];
                     for (int i = 0; i < args.length; i++) {
                         Class paramClass = method.getMethod().getParameterTypes()[i];
-                        convertedArgs[i] = RwsRegistry.convertFromJSON(args[i], paramClass);
+                        convertedArgs[i] = session.getContext().getRegistry().convertFromJSON(args[i], paramClass);
                     }
                 }
                 Object tmpResult = method.getMethod().invoke(instance, convertedArgs);
-                result = RwsRegistry.convertToJSON(tmpResult);
+                result = session.getContext().getRegistry().convertToJSON(tmpResult);
             } else {
                 throw new RwsException("Method '" + methodName + "' does not exist for object '" + jsName + "'");
             }
@@ -176,7 +177,7 @@ public class RwsObject {
         return result;
     }
 
-    public EventListener subscribe(RwsSession session, Object instance, String eventName, final String action, final RwsEventHandler handler) throws RwsException, InvocationTargetException {
+    public EventListener subscribe(final RwsSession session, Object instance, String eventName, final String action, final RwsEventHandler handler) throws RwsException, InvocationTargetException {
         EventListener listener;
         try {
             EventSetDescriptor event = getTargetEvent(eventName);
@@ -199,7 +200,7 @@ public class RwsObject {
                     @Override
                     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
                         if (method.getName().equals(action)) {
-                            handler.handleEvent(RwsRegistry.convertToJSON(args));
+                            handler.handleEvent(session.getContext().getRegistry().convertToJSON(args));
                             return null;
                         } else if (method.getDeclaringClass() == Object.class) {
                             return method.invoke(handler, args);

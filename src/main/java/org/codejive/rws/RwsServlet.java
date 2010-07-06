@@ -6,6 +6,7 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import org.codejive.rws.utils.RwsContextWebFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,9 +38,19 @@ public class RwsServlet extends HttpServlet {
         } else if (path.startsWith("/object/")) {
             String objName = path.substring(8, path.length() - 3);
             log.debug("Requesting object script for '{}'", objName);
-            RwsObject rwsObject = RwsRegistry.getObject(objName);
+            RwsContext context = RwsContextWebFactory.getInstance(getServletContext()).getContext();
+            RwsObject rwsObject = context.getRegistry().getObject(objName);
             if (rwsObject != null) {
-                generateTypeScript(response, rwsObject.getTargetClass());
+                response.setContentType("text/javascript; charset=UTF-8");
+                PrintWriter out = response.getWriter();
+                try {
+                    out.println("if (!rws) var rws = {};");
+                    context.getRegistry().generateTypeScript(rwsObject.getTargetClass(), out);
+                } catch (RwsException ex) {
+                    throw new ServletException("Could not generate object script for " + rwsObject.getTargetClass().getSimpleName(), ex);
+                } finally {
+                    out.close();
+                }
             } else {
                 response.sendError(HttpServletResponse.SC_NOT_FOUND, "Unknown RWS object '" + objName + "'");
             }
@@ -81,22 +92,6 @@ public class RwsServlet extends HttpServlet {
     public String getServletInfo() {
         return "RWS object script generator";
     }// </editor-fold>
-
-    private void generateTypeScript(HttpServletResponse response, Class type) throws IOException, ServletException {
-        assert(response != null);
-        assert(type != null);
-
-        response.setContentType("text/javascript; charset=UTF-8");
-        PrintWriter out = response.getWriter();
-        try {
-            out.println("if (!rws) var rws = {};");
-            RwsRegistry.generateTypeScript(type, out);
-        } catch (RwsException ex) {
-            throw new ServletException("Could not generate object script for " + type.getSimpleName(), ex);
-        } finally {
-            out.close();
-        }
-    }
 
     private void generateOverview(HttpServletResponse response) throws IOException {
         response.setContentType("text/html;charset=UTF-8");

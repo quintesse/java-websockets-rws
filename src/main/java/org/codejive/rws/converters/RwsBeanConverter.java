@@ -25,6 +25,11 @@ import org.json.simple.JSONObject;
  * @author tako
  */
 public class RwsBeanConverter implements RwsConverter<Object> {
+    private RwsRegistry registry;
+
+    public RwsBeanConverter(RwsRegistry registry) {
+        this.registry = registry;
+    }
 
     @Override
     public Object toJSON(RwsObject obj, Object value) throws RwsException {
@@ -34,7 +39,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
             PropertyDescriptor prop = obj.getTargetProperty(name);
             try {
                 Object propVal = prop.getReadMethod().invoke(value);
-                Object convPropVal = RwsRegistry.convertToJSON(propVal);
+                Object convPropVal = registry.convertToJSON(propVal);
                 result.put(prop.getName(), convPropVal);
             } catch (IllegalAccessException ex) {
                 throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
@@ -59,7 +64,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
                 if (prop.getWriteMethod() != null) {
                     try {
                         Object propVal = val.get(prop.getName());
-                        Object convPropVal = RwsRegistry.convertFromJSON(propVal, prop.getPropertyType());
+                        Object convPropVal = registry.convertFromJSON(propVal, prop.getPropertyType());
                         prop.getWriteMethod().invoke(result, convPropVal);
                     } catch (IllegalAccessException ex) {
                         throw new RwsException("Could not convert property '" + prop.getName() + "'", ex);
@@ -83,8 +88,9 @@ public class RwsBeanConverter implements RwsConverter<Object> {
         String objectName = obj.scriptName();
         Class type = obj.getTargetClass();
         out.println("if (typeof " + objectName + " != 'function') {");
-        out.println("    function " + objectName + "() {");
-        out.println("        this._instance = '" + instanceName + "';");
+        out.println("    function " + objectName + "(id) {");
+        out.println("        this.$class = '" + objectName + "';");
+        out.println("        this.$id = id;");
         try {
             BeanInfo info = Introspector.getBeanInfo(type);
             PropertyDescriptor[] props = info.getPropertyDescriptors();
@@ -96,11 +102,12 @@ public class RwsBeanConverter implements RwsConverter<Object> {
         generateInheritance(objectName, type, out, true);
         generateBody(obj, out);
         out.println("}");
+        generateInstances(obj, out);
     }
 
     private void generateTypeProperties(PropertyDescriptor[] props, Class type, PrintWriter out, boolean first) {
         if (type.getSuperclass() != null) {
-            RwsObject obj = RwsRegistry.matchObject(type.getSuperclass());
+            RwsObject obj = registry.matchObject(type.getSuperclass());
             if (obj == null) {
                 generateTypeProperties(props, type.getSuperclass(), out, false);
             }
@@ -122,7 +129,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
 
     private void generateInheritance(String name, Class type, PrintWriter out, boolean first) {
         if (type.getSuperclass() != null) {
-            RwsObject superobj = RwsRegistry.matchObject(type.getSuperclass());
+            RwsObject superobj = registry.matchObject(type.getSuperclass());
             if (superobj == null) {
                 generateInheritance(name, type.getSuperclass(), out, false);
             } else {
@@ -142,11 +149,11 @@ public class RwsBeanConverter implements RwsConverter<Object> {
             String params = generateParameters(m.getMethod().getParameterTypes());
             if (params.length() > 0) {
                 out.println("    " + name + ".prototype." + methodName + " = function(" + params + ", onsuccess, onfailure) {");
-                out.println("        rws.call('sys', '" + methodName + "', this._instance, onsuccess, onfailure, " + params + ")");
+                out.println("        rws.call('sys', '" + methodName + "', this.$id, onsuccess, onfailure, " + params + ")");
                 out.println("    }");
             } else {
                 out.println("    " + name + ".prototype." + methodName + " = function(onsuccess, onfailure) {");
-                out.println("        rws.call('sys', '" + methodName + "', this._instance, onsuccess, onfailure)");
+                out.println("        rws.call('sys', '" + methodName + "', this.$id, onsuccess, onfailure)");
                 out.println("    }");
             }
         }
@@ -160,7 +167,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
                 addParamTypes(paramTypes, m.getMethod().getParameterTypes());
                 // Event subscribe
                 out.println("    " + name + ".prototype.subscribe" + evnm + mnm + " = function(handler) {");
-                out.println("        return rws.subscribe('sys', '" + m.getName() + "', '" + eventName + "', this._instance, handler)");
+                out.println("        return rws.subscribe('sys', '" + m.getName() + "', '" + eventName + "', this.$id, handler)");
                 out.println("    }");
                 // Event unsubscribe
                 out.println("    " + name + ".prototype.unsubscribe" + evnm + mnm + " = function(handlerid) {");
@@ -170,7 +177,16 @@ public class RwsBeanConverter implements RwsConverter<Object> {
         }
 
         for (Class paramType : paramTypes) {
-            out.println("    // DEPENDS ON: " + paramType.getName());
+            if (!paramType.getName().startsWith("java.lang.")
+            && !java.util.Map.class.isAssignableFrom(paramType)
+            && !java.util.Collection.class.isAssignableFrom(paramType)
+            && !paramType.isArray()) {
+                if (registry.matchObject(paramType) != null) {
+                    out.println("    // DEPENDS ON: " + paramType.getName() + " (import available)");
+                } else {
+                    out.println("    // DEPENDS ON: " + paramType.getName());
+                }
+            }
 //            RwsRegistry.generateTypeScript(paramType, out);
         }
     }
@@ -195,6 +211,14 @@ public class RwsBeanConverter implements RwsConverter<Object> {
                 }
                 paramTypes.add(t);
             }
+        }
+    }
+
+    private void generateInstances(RwsObject obj, PrintWriter out) {
+        out.println("// INSTANCES:");
+        Set<String> names = registry.getInstanceNames(obj.scriptName());
+        for (String name : names) {
+             out.println("if (!" + name + ") var " + name + " = new " + obj.scriptName() + "('" + name + "');");
         }
     }
 

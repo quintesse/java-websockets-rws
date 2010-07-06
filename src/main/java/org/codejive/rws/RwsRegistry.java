@@ -5,7 +5,9 @@ import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.util.EventListener;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONAware;
 import org.slf4j.Logger;
@@ -16,30 +18,73 @@ import org.slf4j.LoggerFactory;
  * @author tako
  */
 public class RwsRegistry {
-    private static final Map<String, RwsObject> rwsObjects = new HashMap<String, RwsObject>();
+    private final Map<String, RwsObject> rwsObjects = new HashMap<String, RwsObject>();
+    private final Map<String, InstanceInfo> instances = new HashMap<String, InstanceInfo>();
 
-//    public enum Scope { session, global };
+    public enum Scope { session, global };
 
     private static final Logger log = LoggerFactory.getLogger(RwsRegistry.class);
 
-    public static void register(RwsObject obj) {
+    public void register(RwsObject obj) {
         log.info("Registering object {}", obj);
         rwsObjects.put(obj.scriptName(), obj);
     }
 
-    public static RwsObject getObject(String objName) {
+    public void register(RwsObject obj, RwsContext context, String instanceName, Object instance) {
+        log.info("Registering instance {} with name '{}'", instance, instanceName);
+        if (!rwsObjects.containsKey(obj.scriptName())) {
+            register(obj);
+        }
+        InstanceInfo ii = new InstanceInfo(obj, instanceName);
+        ii.setInstance(context, instance);
+        instances.put(instanceName, ii);
+    }
+
+    public void register(RwsObject obj, RwsSession session, String instanceName, Object instance) {
+        log.info("Registering instance {} with name '{}'", instance, instanceName);
+        if (!rwsObjects.containsKey(obj.scriptName())) {
+            register(obj);
+        }
+        InstanceInfo ii = new InstanceInfo(obj, instanceName);
+        ii.setInstance(session, instance);
+        instances.put(instanceName, ii);
+    }
+
+    public class InstanceInfo {
+        private final RwsObject object;
+        private final String instanceName;
+
+        public InstanceInfo(RwsObject object, String instanceName) {
+            this.object = object;
+            this.instanceName = instanceName;
+        }
+
+        public Object getInstance(RwsContext context) {
+            return context.getAttribute("__rws__" + instanceName);
+        }
+
+        public void setInstance(RwsContext context, Object instance) {
+            context.setAttribute("__rws__" + instanceName, instance);
+        }
+
+        public Object getInstance(RwsSession session) {
+            Object result = session.getAttribute("__rws__" + instanceName);
+            if (result == null) {
+                result = session.getContext().getAttribute("__rws__" + instanceName);
+            }
+            return result;
+        }
+
+        public void setInstance(RwsSession session, Object instance) {
+            session.setAttribute("__rws__" + instanceName, instance);
+        }
+    }
+
+    public RwsObject getObject(String objName) {
         return rwsObjects.get(objName);
     }
     
-    private static RwsObject getObjectStrict(String objName) throws RwsException {
-        RwsObject result = rwsObjects.get(objName);
-        if (result == null) {
-            throw new RwsException("Unknown object '" + objName + "'");
-        }
-        return result;
-    }
-
-    public static RwsObject matchObject(Class type) {
+    public RwsObject matchObject(Class type) {
         RwsObject result = null;
         for (RwsObject obj : rwsObjects.values()) {
             boolean matches;
@@ -64,31 +109,50 @@ public class RwsRegistry {
         return result;
     }
 
-    public static Object call(RwsSession session, String objName, String method, Object[] args) throws RwsException, InvocationTargetException {
-        log.debug("Calling method {} on object {}", method, objName);
-        RwsObject obj = getObjectStrict(objName);
-        Object instance = getInstance();
-        return obj.call(session, instance, method, args);
+    public InstanceInfo getInstanceInfo(String instanceName) {
+        return instances.get(instanceName);
     }
 
-    public static EventListener subscribe(RwsSession session, String objName, String event, String action, RwsEventHandler handler) throws RwsException, InvocationTargetException {
-        if (log.isDebugEnabled()) log.debug("Subscribing to action {} on event {} on object {}", new Object[] { action, event, objName });
-        RwsObject obj = getObjectStrict(objName);
-        Object instance = getInstance();
-        return obj.subscribe(session, instance, event, action, handler);
+    public Set<String> getInstanceNames(String objName) {
+        Set<String> result = new HashSet<String>();
+        for (InstanceInfo ii : instances.values()) {
+            if (ii.object.scriptName().equals(objName)) {
+                result.add(ii.instanceName);
+            }
+        }
+        return result;
     }
 
-    public static void unsubscribe(RwsSession session, String objName, String event, EventListener listener) throws RwsException, InvocationTargetException {
-        log.debug("Unsubscribing from from event {} on object {}", event, objName);
-        RwsObject obj = getObjectStrict(objName);
-        Object instance = getInstance();
-        obj.unsubscribe(session, instance, event, listener);
+    private InstanceInfo getInstanceInfoStrict(String instanceName) throws RwsException {
+        InstanceInfo result = instances.get(instanceName);
+        if (result == null) {
+            throw new RwsException("Unknown instance '" + instanceName + "'");
+        }
+        return result;
     }
 
-    public static Object convertToJSON(Object value) throws RwsException {
+    public Object call(RwsSession session, String instanceName, String method, Object[] args) throws RwsException, InvocationTargetException {
+        log.debug("Calling method {} on instance {}", method, instanceName);
+        InstanceInfo ii = getInstanceInfoStrict(instanceName);
+        return ii.object.call(session, ii.getInstance(session), method, args);
+    }
+
+    public EventListener subscribe(RwsSession session, String instanceName, String event, String action, RwsEventHandler handler) throws RwsException, InvocationTargetException {
+        if (log.isDebugEnabled()) log.debug("Subscribing to action {} on event {} on instance {}", new Object[] { action, event, instanceName });
+        InstanceInfo ii = getInstanceInfoStrict(instanceName);
+        return ii.object.subscribe(session, ii.getInstance(session), event, action, handler);
+    }
+
+    public void unsubscribe(RwsSession session, String instanceName, String event, EventListener listener) throws RwsException, InvocationTargetException {
+        log.debug("Unsubscribing from from event {} on instance {}", event, instanceName);
+        InstanceInfo ii = getInstanceInfoStrict(instanceName);
+        ii.object.unsubscribe(session, ii.getInstance(session), event, listener);
+    }
+
+    public Object convertToJSON(Object value) throws RwsException {
         Object result = null;
         if (value != null) {
-            RwsObject obj = RwsRegistry.matchObject(value.getClass());
+            RwsObject obj = matchObject(value.getClass());
             if (obj != null) {
                 result = obj.toJSON(value);
             } else if (value instanceof JSONAware) {
@@ -114,10 +178,10 @@ public class RwsRegistry {
         return result;
     }
 
-    public static Object convertFromJSON(Object value, Class targetType) throws RwsException {
+    public Object convertFromJSON(Object value, Class targetType) throws RwsException {
         Object result = null;
         if (value != null) {
-            RwsObject obj = RwsRegistry.matchObject(targetType);
+            RwsObject obj = matchObject(targetType);
             if (obj != null) {
                 result = obj.fromJSON(value, targetType);
             } else if (targetType.isAssignableFrom(value.getClass())) {
@@ -129,18 +193,14 @@ public class RwsRegistry {
         return result;
     }
 
-    public static void generateTypeScript(Class type, PrintWriter out) throws RwsException {
-        RwsObject obj = RwsRegistry.matchObject(type);
+    public void generateTypeScript(Class type, PrintWriter out) throws RwsException {
+        RwsObject obj = matchObject(type);
         if (obj != null) {
             String instanceName = obj.scriptName(); // TODO Get real instance name!!
             obj.generateTypeScript(instanceName, out);
         }
     }
 
-    public static Object getInstance() throws RwsException {
-        return null;
-    }
-    
 //    private Object createTargetObject() throws RwsException {
 //        Object result;
 //        log.info("Creating target object for '{}'", jsName);
