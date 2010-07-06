@@ -243,7 +243,7 @@ public class RwsObject {
 
     Object toJSON(Object value) throws RwsException {
         JSONObject result = (JSONObject) converter.toJSON(this, value);
-        result.put("class", scriptName());
+        result.put("$class", scriptName());
         return result;
     }
 
@@ -251,7 +251,7 @@ public class RwsObject {
         return converter.fromJSON(this, value);
     }
 
-    public void generateTypeScript(String instanceName, PrintWriter out) throws RwsException {
-        converter.generateTypeScript(this, instanceName, out);
+    public void generateTypeScript(PrintWriter out) throws RwsException {
+        converter.generateTypeScript(this, out);
     }
 }

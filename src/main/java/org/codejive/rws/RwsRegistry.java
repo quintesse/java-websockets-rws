@@ -23,6 +23,8 @@ public class RwsRegistry {
 
     public enum Scope { session, global };
 
+    private static ThreadLocal<Set<Class>> generatedTypes = new ThreadLocal<Set<Class>>();
+
     private static final Logger log = LoggerFactory.getLogger(RwsRegistry.class);
 
     public void register(RwsObject obj) {
@@ -53,30 +55,36 @@ public class RwsRegistry {
     public class InstanceInfo {
         private final RwsObject object;
         private final String instanceName;
+        private final String attrName;
 
         public InstanceInfo(RwsObject object, String instanceName) {
             this.object = object;
             this.instanceName = instanceName;
+            attrName = "__rws__" + instanceName;
         }
 
         public Object getInstance(RwsContext context) {
-            return context.getAttribute("__rws__" + instanceName);
+            return context.getAttribute(attrName);
         }
 
         public void setInstance(RwsContext context, Object instance) {
-            context.setAttribute("__rws__" + instanceName, instance);
+            if (instance != null) {
+                context.setAttribute(attrName, instance);
+            } else {
+                context.removeAttribute(attrName);
+            }
         }
 
         public Object getInstance(RwsSession session) {
-            Object result = session.getAttribute("__rws__" + instanceName);
+            Object result = session.getAttribute(attrName);
             if (result == null) {
-                result = session.getContext().getAttribute("__rws__" + instanceName);
+                result = session.getContext().getAttribute(attrName);
             }
             return result;
         }
 
         public void setInstance(RwsSession session, Object instance) {
-            session.setAttribute("__rws__" + instanceName, instance);
+            session.setAttribute(attrName, instance);
         }
     }
 
@@ -194,78 +202,27 @@ public class RwsRegistry {
     }
 
     public void generateTypeScript(Class type, PrintWriter out) throws RwsException {
-        RwsObject obj = matchObject(type);
-        if (obj != null) {
-            String instanceName = obj.scriptName(); // TODO Get real instance name!!
-            obj.generateTypeScript(instanceName, out);
+        // The following is a bit of a hack to prevent duplicate types or even
+        // getting stuck in a recursive loop without making the API more complex.
+        boolean first = false;
+        Set<Class> types = generatedTypes.get();
+        if (generatedTypes.get() == null) {
+            types = new HashSet<Class>();
+            generatedTypes.set(types);
+            first = true;
+        }
+
+        if (!types.contains(type)) {
+            types.add(type);
+            RwsObject obj = matchObject(type);
+            if (obj != null) {
+                obj.generateTypeScript(out);
+            }
+        }
+
+        if (first) {
+            generatedTypes.set(null);
         }
     }
-
-//    private Object createTargetObject() throws RwsException {
-//        Object result;
-//        log.info("Creating target object for '{}'", jsName);
-//        try {
-//            result = targetClass.newInstance();
-//        } catch (InstantiationException ex) {
-//            throw new RwsException("Could not create target object for '" + jsName + "'", ex);
-//        } catch (IllegalAccessException ex) {
-//            throw new RwsException("Could not create target object for '" + jsName + "'", ex);
-//        }
-//        return result;
-//    }
-//
-//    private String getTargetObjectName() {
-//        return "__rws__" + jsName;
-//    }
-//
-//    public Object getTargetObject(RwsSession session) throws RwsException {
-//        Object result = null;
-//        switch (scope) {
-//            case session:
-//                result = session.getAttribute(getTargetObjectName());
-//                break;
-//            case global:
-//                result = session.getContext().getAttribute(getTargetObjectName());
-//                break;
-//        }
-//        if (result == null) {
-//            result = createTargetObject();
-//            setTargetObject(session, result);
-//        }
-//        return result;
-//    }
-//
-//    public Object getTargetObject(RwsContext context) throws RwsException {
-//        Object result = null;
-//        switch (scope) {
-//            case global:
-//                result = context.getAttribute(getTargetObjectName());
-//                break;
-//        }
-//        if (result == null) {
-//            result = createTargetObject();
-//            setTargetObject(context, result);
-//        }
-//        return result;
-//    }
-//
-//    public void setTargetObject(RwsSession session, Object targetObject) {
-//        switch (scope) {
-//            case session:
-//                session.setAttribute(getTargetObjectName(), targetObject);
-//                break;
-//            case global:
-//                session.getContext().setAttribute(getTargetObjectName(), targetObject);
-//                break;
-//        }
-//    }
-//
-//    public void setTargetObject(RwsContext context, Object targetObject) {
-//        switch (scope) {
-//            case global:
-//                context.setAttribute(getTargetObjectName(), targetObject);
-//                break;
-//        }
-//    }
 
 }

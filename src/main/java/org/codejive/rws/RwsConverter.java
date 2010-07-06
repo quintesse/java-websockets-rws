@@ -13,5 +13,5 @@ public interface RwsConverter<T> {
 
     T fromJSON(RwsObject obj, Object value) throws RwsException;
 
-    void generateTypeScript(RwsObject obj, String instanceName, PrintWriter out) throws RwsException;
+    void generateTypeScript(RwsObject obj, PrintWriter out) throws RwsException;
 }

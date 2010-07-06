@@ -65,6 +65,10 @@ public class RwsSession {
         attributes.put(name, value);
     }
 
+    public void removeAttribute(String name) {
+        attributes.remove(name);
+    }
+
     public Set<String> getAttributeNames() {
         return Collections.unmodifiableSet(attributes.keySet());
     }

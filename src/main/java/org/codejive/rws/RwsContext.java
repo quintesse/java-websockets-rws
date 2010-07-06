@@ -38,6 +38,10 @@ public class RwsContext {
         attributes.put(name, value);
     }
 
+    public void removeAttribute(String name) {
+        attributes.remove(name);
+    }
+
     public Set<String> getAttributeNames() {
         return Collections.unmodifiableSet(attributes.keySet());
     }
