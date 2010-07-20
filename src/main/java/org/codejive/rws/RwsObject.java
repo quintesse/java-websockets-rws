@@ -153,6 +153,7 @@ public class RwsObject {
 
     public Object call(RwsSession session, Object instance, String methodName, Object[] args) throws RwsException, InvocationTargetException {
         Object result = null;
+        RwsRegistry registry = session.getContext().getRegistry();
         try {
             MethodDescriptor method = getTargetMethod(methodName);
             if (method != null) {
@@ -161,11 +162,11 @@ public class RwsObject {
                     convertedArgs = new Object[args.length];
                     for (int i = 0; i < args.length; i++) {
                         Class paramClass = method.getMethod().getParameterTypes()[i];
-                        convertedArgs[i] = session.getContext().getRegistry().convertFromJSON(args[i], paramClass);
+                        convertedArgs[i] = registry.convertFromJSON(args[i], paramClass);
                     }
                 }
                 Object tmpResult = method.getMethod().invoke(instance, convertedArgs);
-                result = session.getContext().getRegistry().convertToJSON(tmpResult);
+                result = registry.convertToJSON(tmpResult);
             } else {
                 throw new RwsException("Method '" + methodName + "' does not exist for object '" + jsName + "'");
             }
@@ -179,6 +180,7 @@ public class RwsObject {
 
     public EventListener subscribe(final RwsSession session, Object instance, String eventName, final String action, final RwsEventHandler handler) throws RwsException, InvocationTargetException {
         EventListener listener;
+        final RwsRegistry registry = session.getContext().getRegistry();
         try {
             EventSetDescriptor event = getTargetEvent(eventName);
             if (event != null) {
@@ -200,7 +202,7 @@ public class RwsObject {
                     @Override
                     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
                         if (method.getName().equals(action)) {
-                            handler.handleEvent(session.getContext().getRegistry().convertToJSON(args));
+                            handler.handleEvent(registry.convertToJSON(args));
                             return null;
                         } else if (method.getDeclaringClass() == Object.class) {
                             return method.invoke(handler, args);

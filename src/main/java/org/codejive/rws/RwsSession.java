@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.EventListener;
 import java.util.HashMap;
 import java.util.Set;
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.JSONValue;
 import org.slf4j.Logger;
@@ -27,6 +28,9 @@ public class RwsSession {
     private final HashMap<String, EventListener> listeners;
 
     private static long nextSessionId = 1;
+
+    // This is where the session that this Thread is handling right now will be stored
+    private final static ThreadLocal<RwsSession> session = new ThreadLocal<RwsSession>();
 
     private final Logger log = LoggerFactory.getLogger(RwsSession.class);
 
@@ -191,5 +195,75 @@ public class RwsSession {
             this.object = object;
         }
 
+    }
+
+    public void handleMessage(JSONObject info) throws IOException {
+        String to = (String) info.get("to");
+        if (to == null || "sys".equals(to)) {
+            // The message is for the server
+            doCall(info);
+        } else if ("all".equals(to)) {
+            // Send the message to all connected sockets
+            context.sendAll(getId(), info, false);
+        } else {
+            // Send the message to the indicated socket
+            context.sendTo(getId(), to, info);
+        }
+    }
+
+    private void doCall(JSONObject info) throws IOException {
+        String returnId = (String) info.get("id"); // If null the caller is not interested in the result!
+        String obj = (String) info.get("object");
+        String method = (String) info.get("method");
+        Object params = (Object) info.get("params");
+
+        Object[] args = null;
+        // Convert parameter map to array
+        if (params != null && params instanceof JSONArray) {
+            JSONArray p = (JSONArray) params;
+            args = new Object[p.size()];
+            for (int i = 0; i < p.size(); i++) {
+                args[i] = p.get(i);
+            }
+        }
+
+        try {
+            Object result = context.getRegistry().call(this, obj, method, args);
+            if (returnId != null) {
+                send("sys", newCallResult(returnId, result));
+            }
+        } catch (InvocationTargetException ex) {
+            log.error("Remote object returned an error", ex);
+            if (returnId != null) {
+                send("sys", newCallException(returnId, ex));
+            }
+        } catch (Throwable th) {
+            log.error("Rws Call failed", th);
+            if (returnId != null) {
+                send("sys", newCallException(returnId, th));
+            }
+        }
+    }
+
+    private JSONObject newCallResult(String returnId, Object data) {
+        JSONObject obj = new JSONObject();
+        obj.put("id", returnId);
+        obj.put("result", data);
+        return obj;
+    }
+
+    private JSONObject newCallException(String returnId, Throwable th) {
+        JSONObject obj = new JSONObject();
+        obj.put("id", returnId);
+        obj.put("exception", th.toString());
+        return obj;
+    }
+
+    public static RwsSession getInstance() {
+        return session.get();
+    }
+
+    public static void setInstance(RwsSession session) {
+        RwsSession.session.set(session);
     }
 }

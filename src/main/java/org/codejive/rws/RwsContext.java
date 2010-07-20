@@ -51,8 +51,8 @@ public class RwsContext {
     }
 
     public class SessionEvent extends EventObject {
-        public SessionEvent(RwsSession client) {
-            super(client);
+        public SessionEvent(RwsSession session) {
+            super(session);
         }
     }
 
@@ -63,16 +63,16 @@ public class RwsContext {
     }
 
     public RwsSession addSession(RwsWebSocketAdapter adapter) {
-        RwsSession client = new RwsSession(this, adapter);
-        sessions.put(client.getId(), client);
-        fireConnect(client);
-        return client;
+        RwsSession session = new RwsSession(this, adapter);
+        sessions.put(session.getId(), session);
+        fireConnect(session);
+        return session;
     }
 
-    public void removeSession(RwsSession client) {
-        sessions.remove(client.getId());
-        client.clearAttributes();
-        fireDisconnect(client);
+    public void removeSession(RwsSession session) {
+        sessions.remove(session.getId());
+        session.clearAttributes();
+        fireDisconnect(session);
     }
 
     public Collection<RwsSession> listSessions() {
@@ -80,17 +80,17 @@ public class RwsContext {
     }
 
     public void sendTo(String from, String to, JSONObject data) throws IOException {
-        RwsSession client = sessions.get(to);
-        if (client != null) {
-            send(client, from, data);
+        RwsSession session = sessions.get(to);
+        if (session != null) {
+            send(session, from, data);
         }
     }
 
     public void sendAll(String from, JSONObject data, boolean meToo) {
-        for (RwsSession client : sessions.values()) {
-            if (meToo || !client.getId().equals(from)) {
+        for (RwsSession session : sessions.values()) {
+            if (meToo || !session.getId().equals(from)) {
                 try {
-                    send(client, from, data);
+                    send(session, from, data);
                 } catch (IOException ex) {
                     // Ignore
                 }
@@ -98,14 +98,14 @@ public class RwsContext {
         }
     }
 
-    private void send(RwsSession client, String from, JSONObject data) throws IOException {
+    private void send(RwsSession session, String from, JSONObject data) throws IOException {
         try {
-            client.send(from, data);
+            session.send(from, data);
         } catch (IOException ex) {
             log.error("Could not send message, disconnecting socket", ex);
-            removeSession(client);
-            if (client.isConnected()) {
-                client.disconnect();
+            removeSession(session);
+            if (session.isConnected()) {
+                session.disconnect();
             }
             throw ex;
         }
@@ -119,8 +119,8 @@ public class RwsContext {
         listeners.remove(listener);
     }
 
-    private void fireConnect(RwsSession client) {
-        SessionEvent event = new SessionEvent(client);
+    private void fireConnect(RwsSession session) {
+        SessionEvent event = new SessionEvent(session);
         for (SessionListener l : listeners) {
             try {
                 l.connect(event);
@@ -130,8 +130,8 @@ public class RwsContext {
         }
     }
 
-    private void fireDisconnect(RwsSession client) {
-        SessionEvent event = new SessionEvent(client);
+    private void fireDisconnect(RwsSession session) {
+        SessionEvent event = new SessionEvent(session);
         for (SessionListener l : listeners) {
             try {
                 l.disconnect(event);
@@ -141,8 +141,8 @@ public class RwsContext {
         }
     }
 
-    protected void fireChange(RwsSession client) {
-        SessionEvent event = new SessionEvent(client);
+    protected void fireChange(RwsSession session) {
+        SessionEvent event = new SessionEvent(session);
         for (SessionListener l : listeners) {
             try {
                 l.change(event);
