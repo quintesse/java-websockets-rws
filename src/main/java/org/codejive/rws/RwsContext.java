@@ -4,12 +4,15 @@ package org.codejive.rws;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.EventListener;
-import java.util.EventObject;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import org.codejive.rws.events.MulticastEvent;
+import org.codejive.rws.events.MulticastListener;
+import org.codejive.rws.events.SessionEvent;
+import org.codejive.rws.events.SessionListener;
 import org.json.simple.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +24,8 @@ import org.slf4j.LoggerFactory;
 public class RwsContext {
     private final RwsRegistry registry = new RwsRegistry();
     private final Map<String, RwsSession> sessions = new ConcurrentHashMap<String, RwsSession>();
-    private final Set<SessionListener> listeners = new CopyOnWriteArraySet<SessionListener>();
+    private final Set<SessionListener> sessionListeners = new CopyOnWriteArraySet<SessionListener>();
+    private final Set<MulticastListener> multicastListeners = new CopyOnWriteArraySet<MulticastListener>();
     private final Map<String, Object> attributes = new ConcurrentHashMap<String, Object>();
 
     private final Logger log = LoggerFactory.getLogger(RwsContext.class);
@@ -50,17 +54,9 @@ public class RwsContext {
         attributes.clear();
     }
 
-    public class SessionEvent extends EventObject {
-        public SessionEvent(RwsSession session) {
-            super(session);
-        }
-    }
-
-    public interface SessionListener extends EventListener {
-        void connect(SessionEvent event);
-        void disconnect(SessionEvent event);
-        void change(SessionEvent event);
-    }
+    // ---------------------------------------------------------------------
+    // SESSION EVENT HANDLING
+    // ---------------------------------------------------------------------
 
     public RwsSession addSession(RwsWebSocketAdapter adapter) {
         RwsSession session = new RwsSession(this, adapter);
@@ -78,6 +74,104 @@ public class RwsContext {
     public Collection<RwsSession> listSessions() {
         return Collections.unmodifiableCollection(sessions.values());
     }
+
+    public void addSessionListener(SessionListener listener) {
+        sessionListeners.add(listener);
+    }
+
+    public void removeSessionListener(SessionListener listener) {
+        sessionListeners.remove(listener);
+    }
+
+    private void fireConnect(RwsSession session) {
+        SessionEvent event = new SessionEvent(session);
+        for (SessionListener l : sessionListeners) {
+            try {
+                l.connect(event);
+            } catch (Throwable th) {
+                log.warn("Could not fire event on a listener");
+            }
+        }
+    }
+
+    private void fireDisconnect(RwsSession session) {
+        SessionEvent event = new SessionEvent(session);
+        for (SessionListener l : sessionListeners) {
+            try {
+                l.disconnect(event);
+            } catch (Throwable th) {
+                log.warn("Could not fire event on a listener");
+            }
+        }
+    }
+
+    protected void fireChange(RwsSession session) {
+        SessionEvent event = new SessionEvent(session);
+        for (SessionListener l : sessionListeners) {
+            try {
+                l.change(event);
+            } catch (Throwable th) {
+                log.warn("Could not fire event on a listener");
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // MULTICAST EVENT HANDLING
+    // ---------------------------------------------------------------------
+
+    public Collection<String> listMulticastGroups() {
+        HashSet<String> groups = new HashSet<String>();
+        for (RwsSession session : sessions.values()) {
+            groups.addAll(session.listMulticastGroups());
+        }
+        return Collections.unmodifiableCollection(groups);
+    }
+
+    public Collection<RwsSession> listMulticastMembers(String group) {
+        HashSet<RwsSession> members = new HashSet<RwsSession>();
+        for (RwsSession session : sessions.values()) {
+            Collection<String> groups = session.listMulticastGroups();
+            if (groups.contains(group)) {
+                members.add(session);
+            }
+        }
+        return Collections.unmodifiableCollection(members);
+    }
+
+    public void addMulticastListener(MulticastListener listener) {
+        multicastListeners.add(listener);
+    }
+
+    public void removeMulticastListener(MulticastListener listener) {
+        multicastListeners.remove(listener);
+    }
+
+    protected void fireJoin(String group, RwsSession session) {
+        MulticastEvent event = new MulticastEvent(group, session);
+        for (MulticastListener l : multicastListeners) {
+            try {
+                l.join(event);
+            } catch (Throwable th) {
+                log.warn("Could not fire event on a listener");
+            }
+        }
+    }
+
+    protected void fireLeave(String group, RwsSession session) {
+        MulticastEvent event = new MulticastEvent(group, session);
+        for (MulticastListener l : multicastListeners) {
+            try {
+                l.leave(event);
+            } catch (Throwable th) {
+                log.warn("Could not fire event on a listener");
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Communication
+    // ---------------------------------------------------------------------
 
     public void sendTo(String from, String to, JSONObject data) throws IOException {
         RwsSession session = sessions.get(to);
@@ -98,6 +192,19 @@ public class RwsContext {
         }
     }
 
+    public void sendMulti(String from, String group, JSONObject data, boolean meToo) {
+        Collection<RwsSession> members = listMulticastMembers(group);
+        for (RwsSession session : members) {
+            if (meToo || !session.getId().equals(from)) {
+                try {
+                    send(session, from, data);
+                } catch (IOException ex) {
+                    // Ignore
+                }
+            }
+        }
+    }
+
     private void send(RwsSession session, String from, JSONObject data) throws IOException {
         try {
             session.send(from, data);
@@ -108,47 +215,6 @@ public class RwsContext {
                 session.disconnect();
             }
             throw ex;
-        }
-    }
-
-    public void addSessionListener(SessionListener listener) {
-        listeners.add(listener);
-    }
-
-    public void removeSessionListener(SessionListener listener) {
-        listeners.remove(listener);
-    }
-
-    private void fireConnect(RwsSession session) {
-        SessionEvent event = new SessionEvent(session);
-        for (SessionListener l : listeners) {
-            try {
-                l.connect(event);
-            } catch (Throwable th) {
-                log.warn("Could not fire event on a listener");
-            }
-        }
-    }
-
-    private void fireDisconnect(RwsSession session) {
-        SessionEvent event = new SessionEvent(session);
-        for (SessionListener l : listeners) {
-            try {
-                l.disconnect(event);
-            } catch (Throwable th) {
-                log.warn("Could not fire event on a listener");
-            }
-        }
-    }
-
-    protected void fireChange(RwsSession session) {
-        SessionEvent event = new SessionEvent(session);
-        for (SessionListener l : listeners) {
-            try {
-                l.change(event);
-            } catch (Throwable th) {
-                log.warn("Could not fire event on a listener");
-            }
         }
     }
 }

@@ -3,9 +3,11 @@ package org.codejive.rws;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EventListener;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Set;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -26,6 +28,7 @@ public class RwsSession {
     private final HashMap<String, Object> attributes;
     private final HashMap<String, Subscription> subscriptions;
     private final HashMap<String, EventListener> listeners;
+    private final HashSet<String> groups;
 
     private static long nextSessionId = 1;
 
@@ -59,6 +62,7 @@ public class RwsSession {
         attributes = new HashMap<String, Object>();
         subscriptions = new HashMap<String, Subscription>();
         listeners = new HashMap<String, EventListener>();
+        groups = new HashSet<String>();
     }
 
     public Object getAttribute(String name) {
@@ -108,6 +112,24 @@ public class RwsSession {
         } catch (Throwable th) {
             // Ignore
         }
+    }
+
+    public void join(String group) {
+        if (!groups.contains(group)) {
+            groups.add(group);
+            context.fireJoin(group, this);
+        }
+    }
+
+    public void leave(String group) {
+        if (!groups.contains(group)) {
+            groups.remove(group);
+            context.fireLeave(group, this);
+        }
+    }
+
+    public Collection<String> listMulticastGroups() {
+        return Collections.unmodifiableCollection(groups);
     }
 
     public void fireChange(RwsSession client) {
@@ -205,6 +227,10 @@ public class RwsSession {
         } else if ("all".equals(to)) {
             // Send the message to all connected sockets
             context.sendAll(getId(), info, false);
+        } else if (to.startsWith("#")) {
+            // Send the message to all sockets in the named group
+            String group = to.substring(1);
+            context.sendMulti(getId(), group, info, false);
         } else {
             // Send the message to the indicated socket
             context.sendTo(getId(), to, info);
