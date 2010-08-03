@@ -77,7 +77,7 @@ public class RwsSession {
         attributes.remove(name);
     }
 
-    public Set<String> getAttributeNames() {
+    public Set<String> listAttributeNames() {
         return Collections.unmodifiableSet(attributes.keySet());
     }
 
@@ -122,7 +122,7 @@ public class RwsSession {
     }
 
     public void leave(String group) {
-        if (!groups.contains(group)) {
+        if (groups.contains(group)) {
             groups.remove(group);
             context.fireLeave(group, this);
         }

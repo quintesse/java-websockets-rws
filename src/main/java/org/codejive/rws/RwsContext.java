@@ -46,7 +46,7 @@ public class RwsContext {
         attributes.remove(name);
     }
 
-    public Set<String> getAttributeNames() {
+    public Set<String> listAttributeNames() {
         return Collections.unmodifiableSet(attributes.keySet());
     }
 

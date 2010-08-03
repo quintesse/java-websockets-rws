@@ -184,7 +184,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
             && paramType != obj.getTargetClass()) {
                 RwsObject paramObj = registry.matchObject(paramType);
                 if (paramObj != null) {
-                    if (registry.getInstanceNames(paramObj.scriptName()).isEmpty()) {
+                    if (registry.listInstanceNames(paramObj.scriptName()).isEmpty()) {
                         registry.generateTypeScript(paramType, out);
                     } else {
                         out.println("// DEPENDS ON: " + paramType.getName() + " (don't forget to import!)");
@@ -220,7 +220,7 @@ public class RwsBeanConverter implements RwsConverter<Object> {
     }
 
     private void generateInstances(RwsObject obj, PrintWriter out) {
-        Set<String> names = registry.getInstanceNames(obj.scriptName());
+        Set<String> names = registry.listInstanceNames(obj.scriptName());
         if (names.size() > 0) {
             out.println("// INSTANCES:");
             for (String name : names) {

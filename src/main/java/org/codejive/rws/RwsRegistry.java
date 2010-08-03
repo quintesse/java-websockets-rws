@@ -3,6 +3,7 @@ package org.codejive.rws;
 
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Collections;
 import java.util.EventListener;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,6 +93,10 @@ public class RwsRegistry {
         return rwsObjects.get(objName);
     }
     
+    public Set<String> listObjectNames() {
+        return Collections.unmodifiableSet(rwsObjects.keySet());
+    }
+
     public RwsObject matchObject(Class type) {
         RwsObject result = null;
         for (RwsObject obj : rwsObjects.values()) {
@@ -121,7 +126,7 @@ public class RwsRegistry {
         return instances.get(instanceName);
     }
 
-    public Set<String> getInstanceNames(String objName) {
+    public Set<String> listInstanceNames(String objName) {
         Set<String> result = new HashSet<String>();
         for (InstanceInfo ii : instances.values()) {
             if (ii.object.scriptName().equals(objName)) {
