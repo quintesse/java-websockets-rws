@@ -4,6 +4,7 @@ package org.codejive.rws;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.EventListener;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -174,6 +175,14 @@ public class RwsRegistry {
                 JSONArray arr = new JSONArray();
                 Iterable iter = (Iterable) value;
                 for (Object val : iter) {
+                    arr.add(convertToJSON(val));
+                }
+                result = arr;
+            } else if (value instanceof Enumeration) {
+                JSONArray arr = new JSONArray();
+                Enumeration iter = (Enumeration) value;
+                while (iter.hasMoreElements()) {
+                    Object val = iter.nextElement();
                     arr.add(convertToJSON(val));
                 }
                 result = arr;
