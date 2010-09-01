@@ -170,16 +170,19 @@ public class RwsServlet extends HttpServlet {
             out.println("    var params = [];");
             out.println("    for (i = 0; i < pcnt; i++) {");
             out.println("        params[i] = p[pstart + i].value;");
-            out.println("    };");
+            out.println("    }");
             out.println("    params[pcnt] = function(info) {");
-            out.println("        out.innerHTML = info;");
+            out.println("        var txt = rws._pretty(info);");
+            out.println("        if (txt.indexOf('\\n') >= 0) txt = '\\n' + txt;");
+            out.println("        out.innerHTML = txt;");
             out.println("    };");
-            out.println("    params[pcnt + 1] = function(info) {");
-            out.println("        out.innerHTML = info;");
-            out.println("    };");
+            out.println("    params[pcnt + 1] = params[pcnt]");
             out.println("    fn.apply(obj, params);");
             out.println("}");
             out.println("</script>");
+            out.println("<style>");
+            out.println("    .result { white-space: pre }");
+            out.println("</style>");
             out.println("</head><body onload=\"connect()\">");
             out.println("<h1>" + rwsObject.scriptName() + "</h1>");
             out.println("<form>");
@@ -218,7 +221,7 @@ public class RwsServlet extends HttpServlet {
                 }
                 paramCount++;
                 out.println(")<input type=button value=Call onClick=\"call('" + methodName + "', " + startParam + ", " + params.length + ")\">");
-                out.println("<span id=\"result_" + methodName + "\"></span></li>");
+                out.println("<span class=\"result\" id=\"result_" + methodName + "\"></span></li>");
             }
             out.println("</ul>");
             out.println("</form>");
